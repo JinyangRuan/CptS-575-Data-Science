@@ -1,0 +1,294 @@
+---
+title: 'Assignment 3: Data Transformation and Tidying'
+author: "WenLi"
+date: "2020/9/16"
+output: pdf_document
+---
+
+## 1 Question 1
+For this question you will be using either the dplyr package from R or 
+the Pandas library in python to manipulate and clean up a dataset called msleep
+```{r, setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=4.5, fig.height=3, fig.align = 'left', message=FALSE, warning=FALSE)
+library(dplyr)
+library(tidyr)
+Msleep  = read.csv("msleep_ggplot2.csv", header = TRUE)
+Who = tidyr::who
+```
+
+### 1.1 Load the data into R and check abnormalities
+```{r Load }
+Msleep  = read.csv("msleep_ggplot2.csv", header = TRUE)
+head (as_tibble(Msleep))
+```
+
+### 1.2 Print the first few values of the columns with "sleep"
+```{r Sleep}
+Sleep = select(Msleep, contains("sleep"))
+head (as_tibble(Sleep))
+```
+
+### 1.3 Count the number of animals
+```{r CoutAnimal}
+Animals = filter(Msleep, bodywt < 1, sleep_total > 14)
+count(Animals)
+```
+
+### 1.4 Print table in order of sleep time
+```{r PrintBySleepOeder}
+Animals = Msleep%>%
+          select("name", "order", "sleep_total", "bodywt")%>%
+          arrange(desc(sleep_total))
+head (as_tibble(Animals), n = 6)
+```
+
+### 1.5 Print table in order of sleep time
+```{r AddCol}
+NewCols = Msleep%>%
+          select("name","sleep_total","sleep_rem","awake","bodywt","brainwt")%>%
+          mutate(wt_ratio = brainwt/bodywt,
+                 rem_ratio = sleep_rem/sleep_total,
+                 ak_ratio=awake/sleep_total)
+head(as_tibble(NewCols))
+#ak_ratio: the ratio of awake time to sleep time
+```
+
+### 1.6 Display the average, min and max sleep times for each order
+```{r DisOrder}
+SumOrders = Msleep%>%
+            group_by(order)%>%
+            summarise(avearge=mean(sleep_total), min=min(sleep_total), 
+                      max=max(sleep_total), total=n())%>%
+print(SumOrders)
+```
+
+### 1.7 Impute the missing brain weights
+```{r ImputeBw}
+# Impute the missing brain weights as the average wt_ratio
+AvgWtRatio = Msleep%>%
+  group_by(order)%>%
+  select("name", "order", "brainwt", "bodywt")%>%
+  mutate(brainwt=ifelse(is.na(brainwt),
+                        ifelse(is.nan(mean(brainwt, na.rm = TRUE)),0,
+                  mean(brainwt,na.rm = TRUE))/mean(bodywt, na.rm = TRUE)*bodywt, 
+                        brainwt))%>%
+  ungroup(order)
+head(as_tibble(AvgWtRatio))
+
+# Impute the missing brain weights as the average brain weight
+AvgBwt = Msleep%>%
+         group_by(order)%>%
+         select("name", "order", "brainwt", "bodywt")%>%
+         mutate(brainwt=ifelse(is.na(brainwt),
+                               ifelse(is.nan(mean(brainwt,na.rm = TRUE)),0,
+                                      mean(brainwt,na.rm = TRUE)),
+                               brainwt))%>%
+         ungroup(order)
+head(as_tibble(AvgBwt))
+```
+When we impute the missing brain weights as average wt_ratio, we assume that in
+a specific order, wt_ratio of the samples are similar; while choosing the average
+brain weight, the brain weight of the samples are similar. Here imputation by 
+average wt_ratio is a better way for the brain weight which usually associates 
+with the body weight.
+But usually this "Mean Imputation" is not a good choice in practice. there are 
+many other better solutions (e.g., "Hot deck imputation", "Regression imputation").
+
+```{r ImputeSleepRem}
+# Impute the missing sleep_rem as average sleep rem
+SleepRem = Msleep%>%
+           group_by(order)%>%
+           select("name", "order", "sleep_rem")%>%
+           mutate(sleep_rem=ifelse(is.na(sleep_rem),
+                                 ifelse(is.nan(mean(sleep_rem, na.rm = TRUE)),0,
+                                        mean(sleep_rem,na.rm = TRUE)), 
+                                  sleep_rem))%>%
+           ungroup(order)
+head(as_tibble(SleepRem))
+```
+
+## Question 2
+For this question, you will first need to read section 12.6 in the R for 
+Data Science book, here (http://r4ds.had.co.nz/tidy-data.html#case-study). 
+Grab the dataset from the tidyr package (tidyr::who), and tidy it as shown in 
+the case study before answering the following questions.
+
+### 1.1 Load the data into R and Tidy the dataset
+```{r LoadWho }
+Who = tidyr::who
+TidyDataNaF = Who %>%
+              gather(key, value, new_sp_m014:newrel_f65, na.rm = FALSE) %>% 
+              mutate(key = stringr::str_replace(key, "newrel", "new_rel")) %>%
+              separate(key, c("new", "var", "sexage")) %>% 
+              select(-new, -iso2, -iso3) %>% 
+              separate(sexage, c("sex", "age"), sep = 1)
+TidyDataNaF
+```
+### 1.2 Explain mutate(key = stringr::str_replace(key, "newrel", "new_rel")).
+It replace the header with name "newrel" into "new_rel", which can make the format
+of all headers consistent.
+If it is skipped, we can not extract detailed features by simply separate the header name.
+For example, given a header name of "new_sp_f5564" we can apply separate function on it and 
+extract three new features:new, sp, f5564, while in case of "newrel_m014" we can not.
+
+### 1.3 How many entries are removed from the dataset when you set na.rm to true
+```{r GatherNa }
+TidyDataNaT = Who %>%
+              gather(key, value, new_sp_m014:newrel_f65, na.rm = TRUE) %>% 
+              mutate(key = stringr::str_replace(key, "newrel", "new_rel")) %>%
+              separate(key, c("new", "var", "sexage")) %>% 
+              select(-new, -iso2, -iso3) %>% 
+              separate(sexage, c("sex", "age"), sep = 1)
+# When set na.rm=TRUE, the remove entries can be computed as:
+count(TidyDataNaF) - count(TidyDataNaT)
+```
+
+### 1.4 Explain the difference between an explicit and implicit missing value
+According to the "R for Data Science, An explicit missing value is the presence 
+of an absence; an implicit missing value is the absence of a presence", That means
+for explicit missing, there will be a specific representation to indicate the missing of the value
+(e.g., NA). While for implicit missing, there will be no specific representation for the value.
+
+In this dataset, we can consider the value == 0 as the implicit missing value, we
+can get the sub-samples with following command.
+```{r}
+Who %>%
+gather(key, value, new_sp_m014:newrel_f65, na.rm = TRUE) %>%
+filter(value == 0)
+```
+
+### 1.5 Looking at the featuresin the tidied data, are they all appropriately typed?
+```{r}
+head(as_tibble(TidyDataNaT))
+sapply(TidyDataNaT, class)
+```
+As shown above, all features are typed appropriately except the age which is typed 
+as character. Usually it is better to type this feature as integer, when we try to
+analyze this feature (e.g., distribution of the age, average age), we must compute the
+results with integer.
+
+### 1.6 Explain in your own words what a gather operation is.
+#### gather
+During data tidy, when we get a data frame where there are lots of variable with 
+the same features, we can use gather to translate these variables as data values
+(translate columns into rows).
+for example, the following data frame present the variation of fruit price.
+```{r}
+Fruits = tibble(time = as.Date('2020-09-01') + 0:2,
+                 apple  = rnorm(3, 0, 1),
+                 peach  = rnorm(3, 0, 2),
+                 banana = rnorm(3, 0, 3))
+print (Fruits)
+```
+In this data frame, the three variable apple, peach and banana are all fruits and
+this format is usually not what we want, so we can apply gather function on it as following:
+```{r}
+gather(Fruits, key = "fruit", value = "price_var", "apple":"banana")
+
+```
+#### spread
+During data tidy, spread has the similar functionality as gather but it translate 
+the data in rows into columns, which is opposite to gather.
+for example:
+```{r}
+Fruits = tibble( fruit = c('apple', 'apple', 'peach', 'peach', 'banana', 'banana'),
+                 time  = c('2020', '2020', '2019', '2019', '2018', '2018'),
+                 key   = c('yield', 'price', 'yield', 'price', 'yield', 'price'),
+                 value = c(100, 2, 150, 1, 300, 3))
+print (Fruits)
+```
+In this data frame, the variable "key" has only two different values and the variable itself
+is not meaningful, in this case we can translate the data frame with spread as following:
+```{r}
+spread(Fruits, key, value)
+
+```
+
+### 1.7 Generate an informative visualization.
+#### Look at the data grouped by country
+In this case, top TB cases distribution by countries are shown as following graph,
+from which we can know which countries are worse off.
+```{r}
+library(ggplot2)
+VDCountry = TidyDataNaT%>%
+            group_by(country)%>%
+            tally(value)%>%
+            top_n(5)
+ggplot(data=VDCountry, aes(x=country, y=n)) + 
+       geom_bar(stat="identity",width=0.5,fill="gray") +
+       labs(title="TB case distribution in top 5 countries", 
+            x="country", y="number of cases") +
+       theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+#### Look at the data grouped by TB type
+the following graph shows TB case distribution among four TB types, sp is the most
+common type in call cases.
+```{r}
+library(ggplot2)
+VDType = TidyDataNaT%>%
+         group_by(var)%>%
+         tally(value)
+ggplot(data=VDType, aes(x=var, y=n)) + 
+       geom_bar(stat="identity",width=0.5,fill="gray") +
+       labs(title="Number of cases in four TB types", 
+            x="type", y="number of cases") +
+       theme(plot.title = element_text(hjust = 0.5))
+```
+
+#### Look at the data grouped by sex
+the following graph shows TB case distribution among female and male, it indicates
+that male are more easily affected.
+```{r}
+library(ggplot2)
+VDSex = TidyDataNaT%>%
+        group_by(sex)%>%
+        tally(value)
+ggplot(data=VDSex, aes(x=sex, y=n)) + 
+       geom_bar(stat="identity",width=0.5,fill="gray") +
+       labs(title="Number of cases in four TB types", 
+            x="sex", y="number of cases") +
+       theme(plot.title = element_text(hjust = 0.5))
+```
+
+#### Look at the data grouped by age
+the following graph shows TB case distribution among different ages, it indicates
+that people with young and the middle-aged are more possible to be affected.
+```{r}
+library(ggplot2)
+VDAge = TidyDataNaT%>%
+        group_by(age)%>%
+        tally(value)
+ggplot(data=VDAge, aes(x=age, y=n)) + 
+       geom_bar(stat="identity",width=0.5,fill="gray") +
+       labs(title="Number of cases in four TB types", 
+            x="age", y="number of cases") +
+       theme(plot.title = element_text(hjust = 0.5))
+```
+
+### 1.8 Suppose you have the following dataset called siteDemo
+#### Construct the data frame:
+```{r}
+siteDemo = tibble(Site = c('facebook', 'myspace', 'snapchat', 'twitter', 'tiktok'),
+                  U30.F = c(30, 1, 6, 18, 44),
+                  U30.M = c(35, 2, 5, 23, 60),
+                  O30.F = c(66, 3, 3, 12, 2),
+                  O30.M = c(58, 6, 2, 28, 7))
+print (siteDemo)
+```
+
+#### organize the data frame as: Site, AgeGroup, Gender and Count.
+```{r}
+TidyData = siteDemo %>%
+           gather(key, Count, U30.F:O30.M, na.rm = TRUE) %>%
+           separate(key, c("AgeGroup", "Gender"))
+TidyData
+```
+
+
+
+
+
+
+
